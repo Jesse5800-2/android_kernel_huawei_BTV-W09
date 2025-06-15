@@ -37,12 +37,20 @@ jobs:
         sudo update-alternatives --install /usr/bin/python python /usr/bin/python2.7 1
         sudo update-alternatives --set python /usr/bin/python2.7
 
-    - name: Setup AArch64 toolchain
+    - name: Setup AArch64 toolchain (fixed URL)
       run: |
-        mkdir toolchain
-        wget https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/+archive/5d457b6d3d2c1b1b3a3e8e9d6a0d9c6b7a8f7e6d5/android-9.0.0_r55.tar.gz -O toolchain.tar.gz
-        tar -xzf toolchain.tar.gz -C toolchain
-        rm toolchain.tar.gz
+        mkdir -p toolchain
+        # 使用可用的工具链镜像源
+        wget https://storage.googleapis.com/android-ndk/toolchains/aarch64-linux-android-4.9-standalone/stable/android-ndk-r25b-aarch64-linux-android-4.9.tar.gz -O toolchain.tar.gz || \
+        wget https://dl.google.com/android/repository/android-ndk-r25b-linux.zip && \
+        unzip android-ndk-r25b-linux.zip && \
+        mv android-ndk-r25b/toolchains/llvm/prebuilt/linux-x86_64/aarch64-linux-android-4.9 toolchain && \
+        rm -rf android-ndk-r25b*
+        
+        if [ -f toolchain.tar.gz ]; then
+          tar -xzf toolchain.tar.gz -C toolchain --strip-components=1
+          rm toolchain.tar.gz
+        fi
 
     - name: Clone KernelSU
       run: |
@@ -101,8 +109,8 @@ jobs:
         echo "KernelSU版本: $KERNELSU_VERSION" >> artifacts/build_report.txt
         echo "Defconfig: $DEFCONFIG" >> artifacts/build_report.txt
         echo "" >> artifacts/build_report.txt
-        echo "===== KernelSU配置状态 =====" >> artifacts/build_report.txt
-        grep -E 'CONFIG_KSU|CONFIG_KPROBES' out/.config >> artifacts/build_report.txt
+        echo "===== 工具链信息 =====" >> artifacts/build_report.txt
+        ${CROSS_COMPILE}gcc --version >> artifacts/build_report.txt
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -110,5 +118,3 @@ jobs:
         name: kernel-${{ github.run_id }}-${{ github.sha }}
         path: artifacts/
         retention-days: 7
-        compression-level: 9  # v4新增的压缩级别选项
-        overwrite: true       # v4新增的覆盖选项
