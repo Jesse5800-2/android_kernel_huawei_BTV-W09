@@ -1,7 +1,7 @@
 name: Build BTV-W09 Kernel with KernelSU
 
 on:
-  workflow_dispatch: # 手动触发构建
+  workflow_dispatch:
   push:
     branches: [ master ]
   pull_request:
@@ -9,8 +9,8 @@ on:
 
 env:
   KERNEL_VERSION: "4.4.130"
-  KERNELSU_VERSION: "v0.9.4" # 兼容4.4内核的版本
-  DEFCONFIG: "merge_hi3650_defconfig" # 使用正确的defconfig
+  KERNELSU_VERSION: "v0.9.4"
+  DEFCONFIG: "merge_hi3650_defconfig"
 
 jobs:
   build_kernel:
@@ -53,7 +53,6 @@ jobs:
         cd KernelSU
         git apply kernel_patches/linux-4.4/kernelsu.patch
         cd ..
-        # 检查defconfig中是否启用了KPROBES
         grep "CONFIG_KPROBES=y" arch/arm64/configs/$DEFCONFIG || echo "注意：CONFIG_KPROBES未在defconfig中启用"
 
     - name: Configure kernel
@@ -62,15 +61,10 @@ jobs:
         export CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-
         export CFLAGS_MODULE="-fno-pic"
         
-        # 清理构建环境
         make clean
         make mrproper
-        
-        # 使用正确的defconfig
         make O=out $DEFCONFIG
         
-        # 添加KernelSU必需配置（检查是否已存在）
-        echo "添加/更新KernelSU配置选项"
         echo "CONFIG_KPROBES=y" >> out/.config
         echo "CONFIG_HAVE_KPROBES=y" >> out/.config
         echo "CONFIG_KPROBE_EVENTS=y" >> out/.config
@@ -78,14 +72,10 @@ jobs:
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_MODULES=y" >> out/.config
         echo "CONFIG_MODULE_UNLOAD=y" >> out/.config
-        
-        # 基于merge_hi3650_defconfig的特定修复
-        echo "启用defconfig中缺失但KernelSU需要的选项"
         echo "CONFIG_STAGING=y" >> out/.config
         echo "CONFIG_ASHMEM=y" >> out/.config
         echo "CONFIG_ANDROID_LOW_MEMORY_KILLER=y" >> out/.config
         
-        # 应用配置更改
         make O=out oldconfig
 
     - name: Build kernel
@@ -93,12 +83,7 @@ jobs:
         export ARCH=arm64
         export CROSS_COMPILE=$(pwd)/toolchain/bin/aarch64-linux-android-
         export CFLAGS_MODULE="-fno-pic"
-        
-        # 构建内核
         make -j$(($(nproc)*2)) O=out
-        
-        # 验证KernelSU
-        echo "验证KernelSU集成:"
         nm out/vmlinux | grep '__ksu_' && echo "KernelSU符号存在" || echo "警告：未找到KernelSU符号"
 
     - name: Package artifacts
@@ -108,7 +93,6 @@ jobs:
         cp out/.config artifacts/final_config
         cp out/vmlinux artifacts/
         
-        # 生成详细的构建报告
         echo "===== 构建信息 =====" > artifacts/build_report.txt
         echo "设备: Huawei BTV-W09 (hi3650)" >> artifacts/build_report.txt
         echo "内核版本: $KERNEL_VERSION" >> artifacts/build_report.txt
@@ -119,13 +103,12 @@ jobs:
         echo "" >> artifacts/build_report.txt
         echo "===== KernelSU配置状态 =====" >> artifacts/build_report.txt
         grep -E 'CONFIG_KSU|CONFIG_KPROBES' out/.config >> artifacts/build_report.txt
-        echo "" >> artifacts/build_report.txt
-        echo "===== 关键模块状态 =====" >> artifacts/build_report.txt
-        grep -E 'CONFIG_MODULES|CONFIG_STAGING|CONFIG_ASHMEM' out/.config >> artifacts/build_report.txt
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: kernel-${{ github.run_id }}-${{ github.sha }}
         path: artifacts/
         retention-days: 7
+        compression-level: 9  # v4新增的压缩级别选项
+        overwrite: true       # v4新增的覆盖选项
